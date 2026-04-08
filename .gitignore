@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.expo/
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.local
+.turbo/
+*.tsbuildinfo
+web-build/
+ios/
+android/
