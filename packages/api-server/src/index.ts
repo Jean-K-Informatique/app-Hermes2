@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import { join } from 'node:path';
 import { env } from './config/env.js';
 import { getAllowedOrigins } from './config/clients.js';
 import { defaultRateLimit } from './middleware/rateLimit.js';
@@ -31,6 +32,9 @@ app.use(express.urlencoded({ extended: true }));
 
 // Rate limiting
 app.use('/api/', defaultRateLimit);
+
+// Serve uploaded files
+app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
 
 // Request logging
 app.use((req, _res, next) => {
