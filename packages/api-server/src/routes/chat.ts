@@ -155,7 +155,7 @@ router.post(
       const message = await saveMessage({
         conversationId: conv.id,
         role: 'user',
-        content,
+        content: remotePath ? `${content} (fichier: ${remotePath})` : content,
         contentType: contentType as 'audio' | 'image' | 'text',
         audioUrl: fileUrl,
         audioDurationMs,
@@ -163,87 +163,26 @@ router.post(
 
       logger.info({ conversationId, contentType, fileUrl, remotePath }, 'File uploaded');
 
-      // 3. If file was forwarded to Hermes, send a message asking Hermes to process it
-      let hermesResponse: string | null = null;
-      if (remotePath) {
-        const instruction = isAudio
-          ? `L'utilisateur t'a envoyé un message vocal. Le fichier est ici : ${remotePath} — Transcris-le avec Whisper et réponds au contenu.`
-          : isImage
-            ? `L'utilisateur t'a envoyé une image. Le fichier est ici : ${remotePath} — Analyse l'image et décris ce que tu vois.`
-            : `L'utilisateur t'a envoyé un document (${req.file.originalname}). Le fichier est ici : ${remotePath} — Lis le document et fais-en un résumé.`;
-
-        // Get conversation history + the file instruction
-        const history = await getConversationHistory(conv.id, 50);
-        const chatMessages = [
-          ...history.map((m) => ({
-            role: m.role as 'user' | 'assistant' | 'system',
-            content: m.content,
-          })),
-          { role: 'user' as const, content: instruction },
-        ];
-
-        // Stream Hermes response back to client
-        res.writeHead(200, {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          Connection: 'keep-alive',
-          'X-Accel-Buffering': 'no',
-        });
-
-        // First send the uploaded message info
-        res.write(`data: ${JSON.stringify({
-          uploadedMessage: {
-            id: message.id,
-            role: 'user',
-            conversationId: conv.id,
-            content,
-            contentType: message.contentType,
-            audioUrl: isAudio ? fileUrl : undefined,
-            imageUrl: isImage ? fileUrl : undefined,
-            audioDurationMs: audioDurationMs ?? null,
-            createdAt: message.createdAt,
-          }
-        })}\n\n`);
-
-        let fullResponse = '';
-        try {
-          for await (const token of streamChatCompletion(user.tenantId, chatMessages)) {
-            fullResponse += token;
-            res.write(`data: ${JSON.stringify({ token })}\n\n`);
-          }
-        } catch (streamError) {
-          logger.error({ err: streamError }, 'Streaming error after file upload');
-          res.write(`data: ${JSON.stringify({ error: 'Streaming interrupted' })}\n\n`);
-        }
-
-        res.write('data: [DONE]\n\n');
-        res.end();
-
-        // Save Hermes response
-        if (fullResponse.trim()) {
-          await saveMessage({
-            conversationId: conv.id,
-            role: 'assistant',
-            content: fullResponse.trim(),
-          });
-        }
-      } else {
-        // No inbox available — just save the file locally without Hermes processing
-        res.json({
-          message: {
-            id: message.id,
-            role: 'user',
-            conversationId: conv.id,
-            content,
-            contentType: message.contentType,
-            audioUrl: isAudio ? fileUrl : undefined,
-            imageUrl: isImage ? fileUrl : undefined,
-            audioDurationMs: audioDurationMs ?? null,
-            createdAt: message.createdAt,
-          },
-          fileUrl,
-        });
-      }
+      // 3. Return the message — no automatic Hermes processing
+      // The user will decide what to do with the file via a follow-up text message.
+      // When the user sends a text message, the file reference (remotePath) is stored
+      // so Hermes knows about it in the conversation context.
+      res.json({
+        message: {
+          id: message.id,
+          role: 'user',
+          conversationId: conv.id,
+          content,
+          contentType: message.contentType,
+          audioUrl: isAudio ? fileUrl : undefined,
+          imageUrl: isImage ? fileUrl : undefined,
+          audioDurationMs: audioDurationMs ?? null,
+          createdAt: message.createdAt,
+          // Include remote path so frontend can reference it
+          remotePath: remotePath ?? undefined,
+        },
+        fileUrl,
+      });
     } catch (err) {
       if (res.headersSent) {
         res.write(`data: ${JSON.stringify({ error: 'Internal error' })}\n\n`);
