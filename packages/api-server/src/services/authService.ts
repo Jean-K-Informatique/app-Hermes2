@@ -136,36 +136,62 @@ export async function rotateRefreshToken(
 export async function login(
   email: string,
   password: string,
-  tenantSlug: string
+  tenantSlug?: string
 ): Promise<{
   accessToken: string;
   refreshToken: string;
   user: typeof users.$inferSelect;
   tenant: typeof tenants.$inferSelect;
 } | null> {
-  // Find tenant
-  const [tenant] = await db
-    .select()
-    .from(tenants)
-    .where(and(eq(tenants.slug, tenantSlug), eq(tenants.isActive, true)))
-    .limit(1);
+  let tenant: typeof tenants.$inferSelect | undefined;
+  let user: typeof users.$inferSelect | undefined;
 
-  if (!tenant) return null;
+  if (tenantSlug) {
+    // Find by tenant slug + email
+    const [t] = await db
+      .select()
+      .from(tenants)
+      .where(and(eq(tenants.slug, tenantSlug), eq(tenants.isActive, true)))
+      .limit(1);
+    if (!t) return null;
+    tenant = t;
 
-  // Find user in tenant
-  const [user] = await db
-    .select()
-    .from(users)
-    .where(
-      and(
-        eq(users.email, email.toLowerCase()),
-        eq(users.tenantId, tenant.id),
-        eq(users.isActive, true)
+    const [u] = await db
+      .select()
+      .from(users)
+      .where(
+        and(
+          eq(users.email, email.toLowerCase()),
+          eq(users.tenantId, t.id),
+          eq(users.isActive, true)
+        )
       )
-    )
-    .limit(1);
+      .limit(1);
+    user = u;
+  } else {
+    // No tenant slug — find user by email across all active tenants
+    const [u] = await db
+      .select()
+      .from(users)
+      .where(
+        and(
+          eq(users.email, email.toLowerCase()),
+          eq(users.isActive, true)
+        )
+      )
+      .limit(1);
+    if (!u) return null;
+    user = u;
 
-  if (!user) return null;
+    const [t] = await db
+      .select()
+      .from(tenants)
+      .where(and(eq(tenants.id, u.tenantId), eq(tenants.isActive, true)))
+      .limit(1);
+    tenant = t;
+  }
+
+  if (!user || !tenant) return null;
 
   // Verify password
   const valid = await verifyPassword(password, user.passwordHash);

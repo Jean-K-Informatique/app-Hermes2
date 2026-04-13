@@ -14,7 +14,7 @@ const router = Router();
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
-  tenantSlug: z.string().min(1),
+  tenantSlug: z.string().min(1).optional(),
 });
 
 const refreshSchema = z.object({
