@@ -1,23 +1,22 @@
 import { env } from './env.js';
 
-/**
- * Multi-tenant CORS configuration.
- * In production, each tenant would register their allowed origins.
- * For now, we allow common development origins and configure per-env.
- */
 export function getAllowedOrigins(): string[] {
+  // Read CORS_ORIGINS from environment (comma-separated)
+  const corsEnv = process.env.CORS_ORIGINS;
+  if (corsEnv) {
+    return corsEnv.split(',').map((o) => o.trim()).filter(Boolean);
+  }
+
+  // Fallback
   if (env.NODE_ENV === 'development') {
     return [
       'http://localhost:5173',
       'http://192.168.1.141:5173',
       'http://localhost:8081',
-      'http://localhost:19006',
       'http://localhost:3000',
       'http://localhost:3001',
     ];
   }
 
-  // In production, allowed origins should be loaded from tenant config
-  // For now, return the API URL origin
   return [new URL(env.API_URL).origin];
 }
